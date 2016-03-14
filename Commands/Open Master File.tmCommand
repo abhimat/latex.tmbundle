@@ -5,32 +5,36 @@
 	<key>beforeRunningCommand</key>
 	<string>nop</string>
 	<key>command</key>
-	<string>#!/usr/bin/env ruby18
+	<string>#!/usr/bin/ruby
 
-require "#{ENV['TM_SUPPORT_PATH']}/lib/escape.rb"
-require "#{ENV['TM_BUNDLE_SUPPORT']}/lib/LaTeXUtils.rb"
+# -- Imports -------------------------------------------------------------------
 
-master = LaTeX.master(ENV['TM_LATEX_MASTER'] || ENV['TM_FILEPATH'])
+require ENV['TM_BUNDLE_SUPPORT'] + '/lib/Ruby/command.rb'
 
-if master
-  `open -a TextMate #{e_sh master}`
-else
-  echo 'No master file was defined.'
-end
-</string>
+# -- Main ----------------------------------------------------------------------
+
+open_master_file</string>
 	<key>fallbackInput</key>
 	<string>line</string>
 	<key>input</key>
 	<string>selection</string>
+	<key>inputFormat</key>
+	<string>text</string>
 	<key>keyEquivalent</key>
 	<string>^@l</string>
 	<key>name</key>
 	<string>Open Master File</string>
-	<key>output</key>
-	<string>showAsTooltip</string>
+	<key>outputCaret</key>
+	<string>afterOutput</string>
+	<key>outputFormat</key>
+	<string>text</string>
+	<key>outputLocation</key>
+	<string>toolTip</string>
 	<key>scope</key>
 	<string>text.tex.latex</string>
 	<key>uuid</key>
 	<string>BC36A3C7-F9B2-47D4-83FB-2BEB93F14889</string>
+	<key>version</key>
+	<integer>2</integer>
 </dict>
 </plist>

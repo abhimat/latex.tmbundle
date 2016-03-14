@@ -1,8 +1,6 @@
 #! /usr/bin/perl
 
 # LaTeX Watch,
-our $VERSION = "3.8";
-
 #  - by Robin Houston, 2007, 2008.
 #  - by René Schwaiger, 2014, 2015.
 
@@ -21,15 +19,22 @@ our $VERSION = "3.8";
 #       -d --textmate-pid=$tm_pid path/to/texfile.tex
 #
 
-# Changelog now at end of file.
-
 use strict;
 use warnings;
-use POSIX ();
+
+use Cwd qw(abs_path);
+use Env
+  qw(DIALOG DISPLAY HOME PATH TM_APP_IDENTIFIER TM_BUNDLE_SUPPORT TM_SUPPORT_PATH);
 use File::Basename;
 use File::Copy 'copy';
-use File::Spec;
 use Getopt::Long qw(GetOptions :config no_auto_abbrev bundling);
+use POSIX ();
+use Time::HiRes 'sleep';
+
+use lib dirname( dirname abs_path $0) . '/lib/Perl';
+use Latex qw(guess_tex_engine master);
+
+our $VERSION = "3.1415";
 
 #############
 # Configure #
@@ -42,21 +47,21 @@ my ( $DEBUG, $textmate_pid, $progressbar_pid ) = parse_command_line_options();
 my ( $filepath, $wd, $name, $absolute_wd ) = parse_file_path();
 
 my %prefs = get_prefs();
-my ( $mode, $viewer_option, $viewer, @tex );
+my ( $mode, $viewer, @tex );
 
 @tex = qw(latexmk -interaction=nonstopmode);
-push( @tex, "-r '$ENV{TM_BUNDLE_SUPPORT}/config/latexmkrc'" );
+push( @tex, "-r '$TM_BUNDLE_SUPPORT/config/latexmkrc'" );
 if ( $prefs{engine} eq 'latex' ) {
     $mode = "PS";
 
     # Set $DISPLAY to a sensible default, if it's unset
-    $ENV{DISPLAY} = ":0"
-      if !defined $ENV{DISPLAY};
+    $DISPLAY = ":0"
+      unless defined $DISPLAY;
 
     applescript('tell application "XQuartz" to launch');
 
     # Add Fink path
-    $ENV{PATH} .= ":/sw/bin";
+    $PATH .= ":/sw/bin";
 
     push( @tex, qw(-ps) );
 
@@ -103,16 +108,15 @@ main_loop();
             );
         }
 
-        if ( $ENV{TM_APP_IDENTIFIER} ) {
-            $prefs_file =
-              "$ENV{HOME}/Library/Preferences/$ENV{TM_APP_IDENTIFIER}.plist";
+        if ($TM_APP_IDENTIFIER) {
+            $prefs_file = "$HOME/Library/Preferences/$TM_APP_IDENTIFIER.plist";
         }
         else {
             # Guess the location of the current preference file outside of
             # TextMate. The following path is the usual location for the
-            # preview version of TextMate (2.0-alpha).
+            # preview version of TextMate (2.0-beta).
             $prefs_file =
-                "$ENV{HOME}/Library/Preferences/"
+                "$HOME/Library/Preferences/"
               . "com.macromates.textmate.preview.plist";
         }
 
@@ -128,41 +132,6 @@ main_loop();
     }
 }
 
-# Guess the TeX engine which should be used to translate a certain TeX-file.
-#
-# Arguments:
-#
-#      filepath - The file path to the TeX file either as absolute path or
-#                 relative to the location of this file
-#
-# Returns:
-#
-#      A string containing the TeX engine for the given file or an empty
-#      string if the engine could not be determined
-#
-# Example:
-#
-#   We assume `test.tex` contains the line `%!TEX TS-program = pdflatex`
-#   $ guess_tex_engine(test.tex)
-#   "pdflatex"
-#
-sub guess_tex_engine {
-    open( my $fh, "<", @_ )
-      or die "cannot open @_: $!";
-
-    my $engine = "";
-    # TS-program is case insensitive e.g. `LaTeX` should be the same as `latex`
-    my $engines = "(?i)latex|lualatex|pdflatex|xelatex(?-i)";
-    while ( my $line = <$fh> ) {
-        if ( $line =~ /%!TEX(?:\s+)(?:TS-)program(?:\s*)=(?:\s*)($engines)/ ) {
-            $engine = lc($1);
-            last;
-        }
-    }
-    close($fh);
-    return $engine;
-}
-
 sub get_prefs {
     my $engine = guess_tex_engine("$absolute_wd/$name.tex");
     debug_msg("Found type setting program: $engine");
@@ -170,7 +139,7 @@ sub get_prefs {
     return (
         engine  => $engine,
         options => getPreference( latexEngineOptions => "" ),
-        viewer  => getPreference( latexViewer        => "TextMate" ),
+        viewer  => getPreference( latexViewer => "TextMate" ),
     );
 }
 
@@ -181,34 +150,27 @@ sub get_prefs {
 sub init_environment {
 
     # Add MacTeX
-    $ENV{PATH} .= ":/usr/texbin";
+    $PATH .= ":/Library/TeX/texbin/";
+    $PATH .= ":/usr/texbin";
 
     # If TM_SUPPORT_PATH or TM_BUNDLE_SUPPORT are undefined, make a plausible
     # guess. (Useful for running this script from outside TextMate.)
-    $ENV{TM_SUPPORT_PATH} =
-        "$ENV{HOME}/Library/Application Support/"
+    $TM_SUPPORT_PATH =
+        "$HOME/Library/Application Support/"
       . "TextMate/Managed/Bundles/Bundle Support.tmbundle/Support/shared"
-      if !defined $ENV{TM_SUPPORT_PATH};
-    if ( !defined $ENV{TM_BUNDLE_SUPPORT} ) {
-        $ENV{TM_BUNDLE_SUPPORT} =
-          dirname( File::Spec->rel2abs(__FILE__) );
-        $ENV{TM_BUNDLE_SUPPORT} =~ s/\/bin$//;
+      if !defined $TM_SUPPORT_PATH;
+    if ( !defined $TM_BUNDLE_SUPPORT ) {
+        $TM_BUNDLE_SUPPORT = dirname( dirname abs_path $0);
     }
 
     # Add TextMate support paths
-    $ENV{PATH} .= ":$ENV{TM_SUPPORT_PATH}/bin";
-    $ENV{PATH} .= ":$ENV{TM_BUNDLE_SUPPORT}/bin";
+    $PATH .= ":$TM_SUPPORT_PATH/bin";
+    $PATH .= ":$TM_BUNDLE_SUPPORT/bin";
 
     # Location of CocoaDialog binary
-    init_CocoaDialog( "$ENV{TM_SUPPORT_PATH}/bin/CocoaDialog.app"
+    init_CocoaDialog( "$TM_SUPPORT_PATH/bin/CocoaDialog.app"
           . "/Contents/MacOS/CocoaDialog" );
 
-    # Include the bundle's tex tree in the search path: we have a local copy
-    # of pdfsync.sty.
-    $ENV{TEXINPUTS} = `kpsewhich -progname latex --expand-var '\$TEXINPUTS'`;
-    chomp $ENV{TEXINPUTS};
-
-    $ENV{TEXINPUTS} .= ":$ENV{TM_BUNDLE_SUPPORT}/tex/";
 }
 
 sub parse_command_line_options {
@@ -229,9 +191,15 @@ sub parse_command_line_options {
 
 sub parse_file_path {
     my $filepath = shift(@ARGV);
+    my $error;
     fail( "File not saved", "You must save the file before it can be watched" )
       if !defined($filepath)
       or $filepath eq "";
+
+    ( $error, $filepath ) = master($filepath) if -r $filepath;
+
+    # filepath contains error message in case of error
+    fail( "Incorrect master file", $filepath ) if $error;
 
     # Parse and verify file path
     my ( $wd, $name, $absolute_wd );
@@ -239,7 +207,7 @@ sub parse_file_path {
         $wd = $1;
         my $fullname = $';
         if ( $fullname =~ /\.tex\z/ ) {
-            $name    = $`;
+            $name = $`;
         }
         else {
             fail(
@@ -279,7 +247,7 @@ sub main_loop {
     while (1) {
         if ( document_has_changed() ) {
             debug_msg("Reloading file");
-            my ($output_exists, $error) = compile();
+            my ( $output_exists, $error ) = compile();
             view() if $output_exists;
             parse_log($error);
             if ( defined($progressbar_pid) ) {
@@ -306,7 +274,7 @@ sub main_loop {
               };
         }
 
-        select( undef, undef, undef, 0.5 );    # Sleep for 0.5 seconds
+        sleep(0.5);
     }
 }
 
@@ -317,15 +285,7 @@ sub main_loop {
 # Clean up if we're interrupted or die
 sub clean_up {
     debug_msg("Cleaning up");
-    unlink(
-        map( "$wd/$name.$_",
-            qw(acn acr alg aux bbl bcf blg fdb_latexmk fls fmt glo glg gls idx
-              ilg ind ini ist latexmk.log log maf mtc mtc1 nav out pdfsync
-              run.xml snm synctex.gz toc) )
-    ) if defined($wd);
-    # Remove LaTeX bundle cache file
-    unlink("$wd/.$name.lb") if defined($wd);
-
+    fail_unless_system( "clean.rb", "$filepath" );
     $cleanup_viewer->() if defined $cleanup_viewer;
     if ( defined($progressbar_pid) ) {
         debug_msg("Closing progress bar window as part of cleanup");
@@ -402,13 +362,15 @@ sub parse_file_list {
     local $/ = "\n";
 
     my %updated_files;
-    while (<$f>) {
+    # Skip font files, .aux, .ini files and files produced by the minted package
+    my $ignored_files_pattern =
+      '/dev/null|\.(?:fd|tfm|aux|ini|aex|mintedcmd|mintedmd5|pyg|w18)$';
+
+      while (<$f>) {
         if (/^(INPUT|OUTPUT) (.*)/) {
             my ( $t, $f ) = ( $1, $2 );
 
-            next
-              if $f =~
-              m!\.(?:fd|tfm|aux|ini)$!;   # Skip font files, .aux and .ini files
+            next if $f =~ m!$ignored_files_pattern!;
             $f = "$wd/$f" if $f !~ m(/);
 
             my $mtime = -M ($f);
@@ -453,6 +415,7 @@ sub compile {
         "@tex '$wd/$name.tex' &> '$name.latexmk.log'",
         sub {
             if ( $? == 1 || $? == 2 || $? == 12 ) {
+
                 # An error in the document
                 debug_msg("Typesetting command failed with error code $?\n");
                 $error = 1;
@@ -470,20 +433,20 @@ sub compile {
         if ( -e "$wd/$name.ps" ) {
             $compiled_document      = "$wd/$name.ps";
             $compiled_document_name = "$name.ps";
-            return (1, $error);    # Success!
+            return ( 1, $error );    # Success!
         }
         else {
-            return (0, $error);    # Failure
+            return ( 0, $error );    # Failure
         }
     }
-    else {               # PDF mode
+    else {                           # PDF mode
         if ( -e "$wd/$name.pdf" ) {
             $compiled_document      = "$wd/$name.pdf";
             $compiled_document_name = "$name.pdf";
-            return (1, $error);    # Success!
+            return ( 1, $error );    # Success!
         }
         else {
-            return (0, $error);    # Failure
+            return ( 0, $error );    # Failure
         }
     }
 }
@@ -521,7 +484,7 @@ sub parse_log {
         # We might have closed the notification window although there still
         # were errors. Lets reopen it if it was closed
 
-        my $open_windows  = `"$ENV{DIALOG}" nib --list`;
+        my $open_windows  = `"$DIALOG" nib --list`;
         my $window_closed = 1;
 
         for ( split /^/, $open_windows ) {
@@ -546,7 +509,7 @@ sub parse_log {
 
 sub close_notification_window {
     if ( $notification_token ne '' ) {
-        fail_unless_system( "$ENV{DIALOG}", "nib", "--dispose",
+        fail_unless_system( "$DIALOG", "nib", "--dispose",
             "$notification_token" );
         $notification_token = '';
     }
@@ -589,11 +552,13 @@ sub select_postscript_viewer {
             fail("Failed to execute gv ($?): $!");
         }
         elsif ($?) {
+
             # Assume that gv did not understand the --version option,
             # and that it is therefore a pre-3.6.0 version
             @ps_viewer = qw(gv -spartan -scale 1 -nocenter -antialias -nowatch);
         }
         elsif ( $gv_version =~ /^gv 3.6.0$/ ) {
+
             # This version is hopelessly broken. Give up.
             fail(
                 "Broken GV detected",
@@ -604,6 +569,7 @@ sub select_postscript_viewer {
             );
         }
         elsif ( $gv_version =~ /^gv 3.6.1$/ ) {
+
             # Version 3.6.1 of GV has a bug that means it
             # dies if it receives a HUP signal. Therefore we execute it
             # in watch mode, and don't send a HUP.
@@ -614,6 +580,7 @@ sub select_postscript_viewer {
             $hup_viewer = 0;
         }
         elsif ( $gv_version =~ /^gv 3.6.2$/ ) {
+
             # The --scale bug has still not been fixed in 3.6.2,
             # but the HUP one has.
             @ps_viewer = qw(gv --spartan --nocenter --antialias --nowatch);
@@ -636,6 +603,7 @@ sub select_postscript_viewer {
 sub start_postscript_viewer {
     my $pid = fork();
     if ($pid) {
+
         # In parent
         return $pid;
     }
@@ -696,7 +664,7 @@ my $pdf_viewer_app;
 
 sub select_pdf_viewer {
     my ($viewer) = @_;
-    $viewer ||= "TeXShop";    # TeXShop is the default
+    $viewer ||= "Skim";    # We use Skim as default viewer
 
     debug_msg("PDF Viewer selected ($viewer)");
 
@@ -855,11 +823,13 @@ sub fail_unless_system {
 sub cocoa_dialog {
     pipe( my $rh, my $wh );
     if ( my $pid = fork() ) {
+
         # Parent
         local $/ = "\n";
         my $button = <$rh>;
         waitpid( $pid, 0 );
         if ($?) {
+
             # If we failed to show the dialog, there's not much sense
             # in trying to put up another dialog to explain what happened!
             # Print a message to the console.
@@ -886,6 +856,7 @@ sub cocoa_dialog {
 }
 
 sub applescript {
+
     # We could do this much more efficiently using Mac::OSA
     # but that's only preinstalled on 10.4 and later.
     fail_unless_system( "osascript", "-e", @_ );
@@ -1111,3 +1082,34 @@ Changes
     - We now display a notification window in the case of an error. The window
     displays all errors containing line information that `texparser` finds in
     the log output of `latexmk`.
+
+3.9:
+    - Update the list of auxiliary files removed on cleanup.
+
+3.10:
+    - Remove temporary dir created by `pythontex` on cleanup.
+
+3.11:
+    - Remove temporary dir created by package `minted` on cleanup.
+
+3.12:
+    - Do not extend the environment variable TEXINPUTS any more. We used to do
+      this to support “pdfsync”. New TeX distributions include support for the
+      “pdfsync” replacement “SyncTeX”. This means we do not need to support
+      “pdfsync” any more.
+
+3.13:
+    - The script now reads the config file `auxiliary.yaml` to determine which
+      files it removes on cleanup.
+
+3.14:
+    - Improve support for the minted package. Previously the script would
+      sometimes refresh the viewer infinitely often, even if there were no
+      changes to the watched document.
+
+3.141:
+    - Add new path for TeX binaries (MacTeX 2015, OS X 10.11). The script
+      uses this value as backup, if we do not invoke it via “Watch Document”.
+
+3.1415:
+    - Use `clean.rb` to remove auxiliary files

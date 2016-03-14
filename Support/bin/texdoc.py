@@ -41,7 +41,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from os import sys, path
-sys.path.insert(1, path.dirname(path.dirname(path.abspath(__file__))))  # noqa
+sys.path.insert(1, path.dirname(path.dirname(path.abspath(__file__))) +
+                "/lib/Python")  # noqa
 
 from io import open
 from os import chdir, getenv, mkdir
@@ -54,8 +55,7 @@ try:
 except ImportError:
     from urllib import quote  # Python 2
 
-from lib.tex import (find_tex_packages, find_tex_directives,
-                     find_file_to_typeset)
+from tex import (find_tex_packages, find_tex_directives, find_file_to_typeset)
 
 
 # -- Functions ----------------------------------------------------------------
@@ -264,7 +264,8 @@ if __name__ == '__main__':
     # The JavaScript gives us the nifty expand collapse outline look
     tm_bundle_support = getenv('TM_BUNDLE_SUPPORT')
     css_location = quote('{}/css/texdoc.css'.format(tm_bundle_support))
-    js_location = quote('{}/lib/texdoc.js'.format(tm_bundle_support))
+    js_location = quote('{}/lib/JavaScript/texdoc.js'.format(
+                        tm_bundle_support))
     print("""<link rel="stylesheet" href="file://{}">
              <script type="text/javascript" src="file://{}"
                  charset="utf-8"></script>

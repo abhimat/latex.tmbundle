@@ -5,55 +5,34 @@
 	<key>beforeRunningCommand</key>
 	<string>nop</string>
 	<key>command</key>
-	<string>#!/usr/bin/env ruby18
+	<string>#!/usr/bin/ruby
 
-require "#{ENV['TM_SUPPORT_PATH']}/lib/exit_codes.rb"
-require "#{ENV['TM_SUPPORT_PATH']}/lib/ui.rb"
+# -- Imports -------------------------------------------------------------------
 
-if ENV.has_key?('TM_SELECTED_TEXT') then
-  result=ENV['TM_SELECTED_TEXT']
-else
-  result = TextMate::UI.request_string(
-    :title =&gt; 'LaTeX Array Creation', 
-    :prompt =&gt; 'Number of rows and columns:',
-    :default =&gt; '6 4',
-    :button1 =&gt; 'Create'
-  )
-  TextMate.exit_discard if result.nil?
-end
-# print "Result: #{result}"
-m = /(\d+)\D+(\d+)/.match(result.to_s)
-exit if m.nil?
-rows, columns = m[1].to_i, m[2].to_i
-# print "Rows: #{rows}"
-# print "Columns: #{columns}"
-print "\\begin{tabular}{"
-columns.times {print("c")}
-puts "}"
-puts "\\hline\n"
-n=0
-rows.times do |r|
-  (columns-1).times do |c|
-    n+=1
-    print "${#{n}:r#{r+1}c#{c+1}} &amp; "
-  end
-  n+=1
-  print "${#{n}:r#{r+1}c#{columns}}\\\\\\\\\n"
-  puts "\\hline\n"
-end
-puts "\\end{tabular}"
-</string>
+require ENV['TM_BUNDLE_SUPPORT'] + '/lib/Ruby/table.rb'
+
+# -- Main ----------------------------------------------------------------------
+
+puts Table.new</string>
 	<key>input</key>
 	<string>none</string>
+	<key>inputFormat</key>
+	<string>text</string>
 	<key>keyEquivalent</key>
 	<string>^@T</string>
 	<key>name</key>
 	<string>Create Table</string>
-	<key>output</key>
-	<string>insertAsSnippet</string>
+	<key>outputCaret</key>
+	<string>afterOutput</string>
+	<key>outputFormat</key>
+	<string>snippet</string>
+	<key>outputLocation</key>
+	<string>replaceSelection</string>
 	<key>scope</key>
 	<string>text.tex.latex</string>
 	<key>uuid</key>
 	<string>7190DABA-FE8B-4DC7-9D31-3A727A8647CD</string>
+	<key>version</key>
+	<integer>2</integer>
 </dict>
 </plist>

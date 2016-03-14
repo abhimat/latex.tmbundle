@@ -14,12 +14,18 @@
 # - [nose](http://nose.readthedocs.org)
 # - [rubydoctest](https://github.com/tablatom/rubydoctest)
 #
-# For all tests to work correctly you also need to install “Skim” inside
-# the folder `/Applications`.
+# and the following code checkers:
+# - [flake8](https://pypi.python.org/pypi/flake8)
+# - [perlcritic](http://search.cpan.org/dist/Perl-Critic/bin/perlcritic)
+# - [rubocop](https://github.com/bbatsov/rubocop)
+#
+# For all tests to work correctly you also need to install:
+# 1. “Skim” inside the folder `/Applications` and
+# 2. [gtm](http://lists.macromates.com/textmate/2010-May/030881.html) in a
+# 	 location accessible via `PATH`.
 # ------------------------------------------------------------------------------
 
-.PHONY: all clean checkstyle latex_watch cramtests nosetests rubydoctests \
-		toxtests
+.PHONY: checkstyle cramtests perltests rubydoctests toxtests
 
 # -- Variables -----------------------------------------------------------------
 
@@ -32,12 +38,15 @@ export TM_BUNDLE_SUPPORT = $(CURDIR)/Support
 
 BINARY_DIRECTORY = Support/bin
 LIBRARY_DIRECTORY = Support/lib
+RUBY_FILES = $(BINARY_DIRECTORY)/clean.rb \
+			 $(LIBRARY_DIRECTORY)/Ruby/*.rb \
+			 $(LIBRARY_DIRECTORY)/Ruby/{completion,project_management}/*.rb
 
 # -- Rules ---------------------------------------------------------------------
 
 run: all
 
-all: toxtests cramtests_non_python rubydoctests
+all: toxtests cramtests perltests rubydoctests
 
 clean:
 	cd Tests/TeX && rm -vf *.acr *.alg *.bbl *.blg *.dvi *.fdb_latexmk *.fls \
@@ -47,38 +56,30 @@ clean:
 # = Style Checks =
 # ================
 
-checkstyle: checkstyle_python checkstyle_ruby
+checkstyle: checkstyle_perl checkstyle_python checkstyle_ruby
+
+checkstyle_perl:
+	perlcritic --harsh $(LIBRARY_DIRECTORY)/Perl/*.pm Tests/Perl/*.t
+	perlcritic $(BINARY_DIRECTORY)/latex_watch.pl
 
 checkstyle_python:
-	flake8 $(BINARY_DIRECTORY)/*.py $(LIBRARY_DIRECTORY)/*.py
+	flake8 $(BINARY_DIRECTORY)/*.py $(LIBRARY_DIRECTORY)/Python/*.py
 
 checkstyle_ruby:
-	rubocop Support/lib/format_table.rb
+	rubocop $(RUBY_FILES)
 
-# ================
-# = Manual Tests =
-# ================
+# =========
+# = Tests =
+# =========
 
-latex_watch:
-	TM_PID=$(shell pgrep TextMate)
-	$(BINARY_DIRECTORY)/latex_watch.pl -d --textmate-pid=$(TM_PID) \
-		"$(CURDIR)/Tests/TeX/makeindex.tex"
+cramtests:
+	cd Tests/Cram/General && cram *.t
 
-# ===================
-# = Automated Tests =
-# ===================
-
-cramtests: clean
-	cd Tests/Cram && cram *.t
-
-cramtests_non_python:
-	cd Tests/Cram && cram check_filenames.t
-
-nosetests: checkstyle_python
-	nosetests --with-doctest $(LIBRARY_DIRECTORY)/*.py $(BINARY_DIRECTORY)/*.py
+perltests: checkstyle_perl
+	perl Tests/Perl/*.t
 
 rubydoctests: checkstyle_ruby
-	rubydoctest Support/lib/format_table.rb
+	rubydoctest $(RUBY_FILES)
 
 toxtests: checkstyle_python
 	tox

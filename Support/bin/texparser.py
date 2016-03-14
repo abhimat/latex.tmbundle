@@ -7,7 +7,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from os import sys, path
-sys.path.insert(1, path.dirname(path.dirname(path.abspath(__file__))))  # noqa
+sys.path.insert(1, path.dirname(path.dirname(path.abspath(__file__))) +
+                "/lib/Python")  # noqa
 
 from argparse import ArgumentParser
 from io import open
@@ -18,8 +19,9 @@ from pipes import quote as shellquote
 from subprocess import check_output, STDOUT
 from sys import version_info
 
-from lib.util import update_marks
-from lib.parsing import LaTexMkParser
+from parsing import LaTexMkParser
+from tex import encodings
+from gutter import update_marks
 
 # -- Module Import ------------------------------------------------------------
 
@@ -27,7 +29,7 @@ PYTHON2 = version_info <= (3, 0)
 
 if PYTHON2:
     import sys
-    reload(sys)
+    reload(sys)  # noqa
     sys.setdefaultencoding("utf-8")
 
 
@@ -144,9 +146,16 @@ if __name__ == '__main__':
             # Fail silently
             exit(0)
     else:
-        texparser = LaTexMkParser(open(logfile, encoding='latin_1'),
-                                  verbose=False, filename=texfile)
-        texparser.parse_stream()
+        # Depending on the error the tex engine might return a log file in a
+        # different encoding.
+        for encoding in encodings:
+            try:
+                texparser = LaTexMkParser(open(logfile, encoding=encoding),
+                                          verbose=False, filename=texfile)
+                texparser.parse_stream()
+                break
+            except UnicodeDecodeError:
+                continue
         # Sort marks by line number
         marks = sorted(texparser.marks, key=lambda marks: marks[1])
         update_marks(cachefile, marks)

@@ -37,7 +37,8 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 from os import sys, path
-sys.path.insert(1, path.dirname(path.dirname(path.abspath(__file__))))  # noqa
+sys.path.insert(1, path.dirname(path.dirname(path.abspath(__file__))) +
+                "/lib/Python")  # noqa
 
 from argparse import ArgumentParser, ArgumentTypeError
 from glob import glob
@@ -56,13 +57,12 @@ try:
 except ImportError:
     from urllib import quote  # Python 2
 
-from lib.tex import (find_file_to_typeset, find_tex_directives,
-                     find_tex_packages)
-from lib.tmprefs import Preferences
-from lib.util import update_marks
-from lib.parsing import (BibTexParser, BiberParser, ChkTexParser,
-                         LaTexParser, MakeGlossariesParser, MakeIndexParser,
-                         LaTexMkParser)
+from auxiliary import remove_auxiliary_files, remove_cache_files
+from gutter import update_marks
+from parsing import (BibTexParser, BiberParser, ChkTexParser, LaTexParser,
+                     MakeGlossariesParser, MakeIndexParser, LaTexMkParser)
+from tex import (find_file_to_typeset, find_tex_directives, find_tex_packages)
+from tmprefs import Preferences
 
 
 # -- Module Import ------------------------------------------------------------
@@ -263,7 +263,7 @@ def run_makeindex(filename, verbose=False):
 
     """
     run_object = Popen("makeindex {}".format(shellquote("{}.idx".format(
-        get_filename_without_extension(filename)))), shell=True,
+        splitext(filename)[0]))), shell=True,
         stdout=PIPE, stdin=PIPE, stderr=STDOUT, close_fds=True,
         universal_newlines=True)
     ip = MakeIndexParser(run_object.stdout, verbose)
@@ -302,7 +302,7 @@ def run_makeglossaries(filename, verbose=False):
 
     """
     run_object = Popen("makeglossaries {}".format(
-                       shellquote(get_filename_without_extension(filename))),
+                       shellquote(splitext(filename)[0])),
                        shell=True, stdout=PIPE, stdin=PIPE, stderr=STDOUT,
                        close_fds=True, universal_newlines=True)
     bp = MakeGlossariesParser(run_object.stdout, verbose)
@@ -621,8 +621,9 @@ def construct_engine_command(ts_directives, tm_engine, packages):
         tm_engine
 
             A sting containing the default tex engine used in TextMate. The
-            default engine will be used if ``TS-program`` is not set and none
-            of the specified packages contain engine-specific code.
+            default engine will be used if ``TS-program`` or ``program`` is
+            not set and none of the specified packages contain engine-specific
+            code.
 
         packages
 
@@ -647,6 +648,8 @@ def construct_engine_command(ts_directives, tm_engine, packages):
 
     if 'TS-program' in ts_directives:
         engine = ts_directives['TS-program']
+    elif 'program' in ts_directives:
+        engine = ts_directives['program']
     elif packages.intersection(latex_indicators):
         engine = 'latex'
     elif packages.intersection(xelatex_indicators):
@@ -663,32 +666,6 @@ def construct_engine_command(ts_directives, tm_engine, packages):
         exit(EXIT_TEX_ENGINE_NOT_FOUND)
 
     return engine
-
-
-def get_filename_without_extension(filename):
-    """Get the given file name without its extension.
-
-    If ``filename`` has no extensions then the unchanged file name will be
-    returned.
-
-    Arguments:
-
-        file_name
-
-            The path of some file, either with or without extension.
-
-    Returns: ``str``
-
-
-    Examples:
-
-        >>> print(get_filename_without_extension('../hello_world.tex'))
-        ../hello_world
-        >>> print(get_filename_without_extension('Makefile'))
-        Makefile
-
-    """
-    return splitext(filename)[0]
 
 
 def write_latexmkrc(engine, options, location='/tmp/latexmkrc'):
@@ -727,7 +704,8 @@ def write_latexmkrc(engine, options, location='/tmp/latexmkrc'):
 
 
 def get_typesetting_data(filepath, tm_engine,
-                         tm_bundle_support=getenv('TM_BUNDLE_SUPPORT')):
+                         tm_bundle_support=getenv('TM_BUNDLE_SUPPORT'),
+                         ignore_warnings=False):
     """Return a dictionary containing up-to-date typesetting data.
 
     This function changes the current directory to the location of
@@ -746,6 +724,11 @@ def get_typesetting_data(filepath, tm_engine,
         tm_bundle_support
 
             The location of the “LaTeX Bundle” support folder.
+
+        ignore_warnings
+
+            Specifies if this function exits with an error status if there are
+            any problems.
 
     Returns: ``{str: str}``
 
@@ -782,7 +765,7 @@ def get_typesetting_data(filepath, tm_engine,
 
         except:
             # Get data and save it in the cache
-            packages = find_tex_packages(filename)
+            packages = find_tex_packages(filename, ignore_warnings)
             engine = construct_engine_command(typesetting_directives,
                                               tm_engine, packages)
             synctex = not(bool(call("{} --help | grep -q synctex".format(
@@ -802,10 +785,10 @@ def get_typesetting_data(filepath, tm_engine,
         return typesetting_data
 
     filepath = normpath(realpath(filepath))
-    typesetting_directives = find_tex_directives(filepath)
+    typesetting_directives = find_tex_directives(filepath, ignore_warnings)
     filename, file_path = find_file_to_typeset(typesetting_directives,
                                                tex_file=filepath)
-    file_without_suffix = get_filename_without_extension(filename)
+    file_without_suffix = splitext(filename)[0]
     chdir(file_path)
     cache_filename = '.{}.lb'.format(file_without_suffix)
     typesetting_data = get_cached_data()
@@ -935,7 +918,7 @@ if __name__ == '__main__':
     viewer_status = 0
     filepath = arguments.filepath
     first_run = not arguments.addoutput
-    line_number = getenv('TM_SELECTION').split(':')[0]
+    line_number = match('^\d+', getenv('TM_SELECTION')).group(0)
     number_errors = 0
     number_runs = 0
     number_warnings = 0
@@ -961,8 +944,9 @@ if __name__ == '__main__':
         if arguments.engine_options:
             tm_engine_options = arguments.engine_options
 
-    typesetting_data = get_typesetting_data(filepath, tm_engine,
-                                            tm_bundle_support)
+    typesetting_data = get_typesetting_data(
+        filepath, tm_engine, tm_bundle_support,
+        True if command in {'clean', 'version'} else False)
 
     typesetting_directives = typesetting_data['typesetting_directives']
     cache_filename = typesetting_data['cache_filename']
@@ -1042,21 +1026,13 @@ if __name__ == '__main__':
         tex_status, fatal_error, number_errors, number_warnings = status
 
     elif command == 'clean':
-        auxiliary_file_regex = (
-            '.*\.(acn|acr|alg|aux|bbl|bcf|blg|fdb_latexmk|fls|fmt|glg|glo|gls|'
-            'idx|ilg|ind|ini|ist|lb|log|out|maf|mtc|mtc1|nav|pdfsync|run.xml|'
-            'snm|synctex.gz|toc)$')
-        command = ("find -E . -maxdepth 1 -type f -regex " +
-                   "'{}' -delete -print".format(auxiliary_file_regex))
-        removed_files = check_output(command, shell=True,
-                                     universal_newlines=True).strip()
-        # Remove leading './' to get nicer looking output
-        removed_files = removed_files.replace('./', '')
+        remove_cache_files()
+        removed_files = remove_auxiliary_files()
         if removed_files:
-            for removed_file in removed_files.split('\n'):
+            for removed_file in removed_files:
                 print('<p class"info">Removed {}</p>'.format(removed_file))
         else:
-            print('<p class"info">Clean: No Auxiliary files found'.format())
+            print('<p class"info">Clean: No Auxiliary files found')
 
     elif command == 'latex':
         engine_options = construct_engine_options(typesetting_directives,
@@ -1120,9 +1096,11 @@ if __name__ == '__main__':
               'with error code {}</p>'.format(tex_status))
 
     if number_warnings > 0 or number_errors > 0:
-        print('<p class="info">Found {} errors, and '.format(number_errors) +
-              '{} warnings in {} run{}</p>'.format(
-              number_warnings, number_runs, '' if number_runs == 1 else 's'))
+        print('''<p class="info">Found {} error{}, and
+                 {} warning{} in {} run{}</p>
+              '''.format(number_errors, '' if number_errors == 1 else 's',
+                         number_warnings, '' if number_warnings == 1 else 's',
+                         number_runs, '' if number_runs == 1 else 's'))
 
     # Decide what to do with the Latex & View log window
     exit_code = (EXIT_DISCARD if not tm_preferences['latexKeepLogWin'] and
@@ -1133,7 +1111,8 @@ if __name__ == '__main__':
         print('</div></div>')  # Close divs `preText` and `commandOutput`
         pdf_file = '{}.pdf'.format(file_without_suffix)
         # only need to include the javascript library once
-        texlib_location = quote('{}/lib/texlib.js'.format(tm_bundle_support))
+        texlib_location = quote('{}/lib/JavaScript/texlib.js'.format(
+                                tm_bundle_support))
 
         print('''<script src="file://{}" type="text/javascript"
                   charset="utf-8"></script>
@@ -1152,7 +1131,7 @@ if __name__ == '__main__':
         if viewer == 'TextMate':
             print('''<input type="button" value="View in TextMate"
                       onclick="window.location='file://{}'"/>'''.format(
-                  quote('{}/{}'.format(file_path, pdf_file))))
+                  quote('{}/{}'.format(file_path, pdf_file).encode('utf8'))))
         else:
             print('''<input type="button" value="View in {}"
                      onclick="runView(); return false">'''.format(viewer))
