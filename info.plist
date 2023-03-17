@@ -7,7 +7,7 @@
 	<key>contactName</key>
 	<string>René Schwaiger</string>
 	<key>description</key>
-	<string>Support for the &lt;a href="http://www.latex-project.org/"&gt;LaTeX&lt;/a&gt; typesetting system, the de facto standard for scientific papers.</string>
+	<string>Support for the &lt;a href=&quot;http://www.latex-project.org/&quot;&gt;LaTeX&lt;/a&gt; typesetting system, the de facto standard for scientific papers.</string>
 	<key>mainMenu</key>
 	<dict>
 		<key>excludedItems</key>
@@ -95,6 +95,7 @@
 					<string>0F8A8F61-0AE1-44F8-B4FA-01D4F877E9EE</string>
 					<string>FD59489B-7437-48DD-A4EC-9AF3AB2FCF19</string>
 					<string>5305AE18-1F7F-4284-A537-C0418119D078</string>
+					<string>C3B6AD7C-F288-46D2-A56B-9DBE5B87626F</string>
 					<string>84216BD6-F6EB-4325-9485-1665E7364102</string>
 				</array>
 				<key>name</key>
